@@ -7,7 +7,7 @@
 <style>
 
 body{
-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+font-family: system-ui, -apple-system, Segoe UI, Roboto;
 background:#0f172a;
 color:white;
 margin:0;
@@ -29,7 +29,7 @@ background:#1e293b;
 padding:20px;
 border-radius:12px;
 margin-bottom:20px;
-box-shadow:0 4px 15px rgba(0,0,0,0.4);
+box-shadow:0 6px 20px rgba(0,0,0,0.4);
 }
 
 input{
@@ -66,20 +66,21 @@ border-left:4px solid #3b82f6;
 
 .docs{
 display:grid;
-grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-gap:10px;
+grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+gap:12px;
 margin-top:10px;
 }
 
 .doc{
 background:#334155;
-padding:10px;
+padding:12px;
 border-radius:8px;
 font-size:14px;
 }
 
 .highlight{
 border:2px solid #22c55e;
+background:#1e3a3a;
 }
 
 .prompt{
@@ -88,12 +89,19 @@ padding:15px;
 border-radius:8px;
 font-family:monospace;
 white-space:pre-wrap;
+margin-top:10px;
 }
 
 .answer{
 font-size:18px;
 margin-top:10px;
 color:#a5f3fc;
+}
+
+.vector{
+font-size:13px;
+color:#cbd5f5;
+margin-top:6px;
 }
 
 </style>
@@ -103,14 +111,14 @@ color:#a5f3fc;
 
 <div class="container">
 
-<h1>RAG Simulator</h1>
+<h1>RAG Pipeline Simulator</h1>
 
 <div class="card">
 
-<label>Ask a Question</label>
-<input id="question" placeholder="Example: What is Agile methodology?">
+<label>Ask a question</label>
+<input id="question" placeholder="Example: What is Agile or What is RAG?">
 
-<button onclick="runRAG()">Run RAG Pipeline</button>
+<button onclick="runRAG()">Run RAG</button>
 
 </div>
 
@@ -140,23 +148,26 @@ color:#a5f3fc;
 
 const knowledgeBase = [
 
-"Agile is a software development methodology focused on iterative development and collaboration.",
+"Agile is a software development methodology that focuses on iterative development, collaboration, and continuous feedback.",
 
-"Scrum is a framework within Agile that uses sprints and roles like Product Owner and Scrum Master.",
+"Scrum is an Agile framework where teams work in short sprints and include roles like Product Owner and Scrum Master.",
 
-"Machine learning allows systems to learn patterns from data without explicit programming.",
+"Retrieval Augmented Generation (RAG) improves large language models by retrieving relevant documents before generating answers.",
 
-"Retrieval Augmented Generation (RAG) combines document retrieval with language model generation.",
+"Vector databases store embeddings and allow semantic similarity search across documents.",
 
-"Vector databases store embeddings and enable semantic search.",
+"Product discovery focuses on understanding user problems before building solutions.",
 
-"Product discovery focuses on identifying real user problems before building features."
+"Machine learning enables systems to learn patterns from data without explicit programming."
 
 ]
+
+
 
 function renderDocs(){
 
 const container = document.getElementById("docs")
+container.innerHTML=""
 
 knowledgeBase.forEach((doc,i)=>{
 
@@ -175,30 +186,42 @@ renderDocs()
 
 
 
-function fakeEmbedding(text){
+function createEmbedding(text){
 
-return text
-.toLowerCase()
-.split(" ")
-.map(word=>word.charCodeAt(0))
+let vector = new Array(10).fill(0)
+
+text.toLowerCase().split(" ").forEach(word=>{
+
+for(let i=0;i<word.length;i++){
+vector[i % 10] += word.charCodeAt(i)
+}
+
+})
+
+return vector
 
 }
 
 
 
-function similarity(q,doc){
+function cosineSimilarity(a,b){
 
-let score=0
+let dot=0
+let magA=0
+let magB=0
 
-q.forEach(v=>{
-doc.forEach(d=>{
-if(Math.abs(v-d)<3){
-score++
+for(let i=0;i<a.length;i++){
+
+dot += a[i]*b[i]
+magA += a[i]*a[i]
+magB += b[i]*b[i]
+
 }
-})
-})
 
-return score
+magA=Math.sqrt(magA)
+magB=Math.sqrt(magB)
+
+return dot/(magA*magB)
 
 }
 
@@ -217,43 +240,42 @@ d.classList.remove("highlight")
 
 
 
+/* STEP 1 */
+
 const embedStep=document.createElement("div")
 embedStep.className="step"
 embedStep.innerHTML="<b>Step 1: Create Question Embedding</b>"
+
+const qEmbedding=createEmbedding(question)
+
+embedStep.innerHTML+=`<div class="vector">Vector: ${JSON.stringify(qEmbedding)}</div>`
+
 steps.appendChild(embedStep)
 
 
 
-const qEmbedding=fakeEmbedding(question)
+/* STEP 2 */
 
-embedStep.innerHTML+= "<br>"+JSON.stringify(qEmbedding)
-
-
-
-const retrieveStep=document.createElement("div")
-retrieveStep.className="step"
-retrieveStep.innerHTML="<b>Step 2: Vector Similarity Search</b>"
-steps.appendChild(retrieveStep)
-
-
+const searchStep=document.createElement("div")
+searchStep.className="step"
+searchStep.innerHTML="<b>Step 2: Vector Similarity Search</b>"
 
 let scoredDocs=knowledgeBase.map((doc,i)=>{
 
-const score=similarity(qEmbedding,fakeEmbedding(doc))
+const emb=createEmbedding(doc)
+const score=cosineSimilarity(qEmbedding,emb)
 
 return {doc,index:i,score}
 
 })
 
-
-
 scoredDocs.sort((a,b)=>b.score-a.score)
 
 const topDocs=scoredDocs.slice(0,2)
 
+searchStep.innerHTML+="Top 2 documents retrieved based on similarity."
 
-
-retrieveStep.innerHTML+="<br>Top documents selected"
+steps.appendChild(searchStep)
 
 
 
@@ -263,14 +285,16 @@ document.getElementById("doc"+d.index).classList.add("highlight")
 
 
 
+/* STEP 3 */
+
 const promptStep=document.createElement("div")
 promptStep.className="step"
-promptStep.innerHTML="<b>Step 3: Construct Prompt for LLM</b>"
+promptStep.innerHTML="<b>Step 3: Prompt Construction</b>"
 
 const context=topDocs.map(d=>d.doc).join("\n")
 
 const prompt=
-`Answer the question using the context.
+`Answer the question using the context below.
 
 Context:
 ${context}
@@ -284,11 +308,43 @@ steps.appendChild(promptStep)
 
 
 
+/* STEP 4 */
+
 const answerStep=document.createElement("div")
 answerStep.className="step"
-answerStep.innerHTML="<b>Step 4: LLM Generates Answer</b>"
+answerStep.innerHTML="<b>Step 4: Generated Answer</b>"
 
-const answer="Based on the retrieved documents, the answer relates to: " + context
+let answer=""
+
+if(context.toLowerCase().includes("agile") && question.toLowerCase().includes("agile")){
+
+answer="Agile is a development methodology that emphasizes iterative delivery, collaboration, and continuous improvement."
+
+}
+
+else if(context.toLowerCase().includes("scrum")){
+
+answer="Scrum is a framework within Agile that structures work into sprints and defines roles like Product Owner and Scrum Master."
+
+}
+
+else if(context.toLowerCase().includes("rag")){
+
+answer="Retrieval Augmented Generation (RAG) works by retrieving relevant documents and providing them as context to an LLM before generating an answer."
+
+}
+
+else if(context.toLowerCase().includes("vector")){
+
+answer="Vector databases store embeddings and allow semantic search using similarity measures like cosine similarity."
+
+}
+
+else{
+
+answer="The system retrieved relevant documents and generated an answer grounded in those documents."
+
+}
 
 answerStep.innerHTML+=`<div class="answer">${answer}</div>`
 
